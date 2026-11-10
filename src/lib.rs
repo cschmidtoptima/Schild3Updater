@@ -3,6 +3,7 @@ use semver::Version;
 
 pub mod config;
 pub mod install;
+pub mod self_update;
 pub mod service;
 pub mod version_info;
 

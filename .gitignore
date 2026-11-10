@@ -1,2 +1,5 @@
 /target/
 /dist/
+/release/
+/settings.json
+/SchILD3Updater*.exe

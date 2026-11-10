@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "schild3-updater"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "eframe",
@@ -3340,6 +3340,7 @@ dependencies = [
  "reqwest",
  "resvg 0.45.1",
  "rfd",
+ "self-replace",
  "semver",
  "serde",
  "serde_json",
@@ -3373,6 +3374,17 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit 0.19.2",
  "tiny-skia",
+]
+
+[[package]]
+name = "self-replace"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "609c5606d9d357b26e4ee1a7a01beac396628d0fa01ebbade2a09cefb88e65af"
+dependencies = [
+ "fastrand",
+ "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

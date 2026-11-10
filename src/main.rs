@@ -3,6 +3,7 @@
 use eframe::egui;
 use schild3_updater::{
     config::{self, Settings},
+    self_update,
     service::{self, UpdatePlan},
 };
 use std::sync::mpsc::{self, Receiver};
@@ -96,6 +97,9 @@ fn app_icon() -> egui::IconData {
 
 enum Event {
     Progress(String),
+    UpdaterChecked(Option<self_update::Update>),
+    UpdaterCheckFailed(String),
+    UpdaterInstalled(std::path::PathBuf),
     Plan(UpdatePlan),
     ConfirmUpdate(UpdatePlan),
     Done(String),
@@ -103,6 +107,8 @@ enum Event {
 }
 
 enum Operation {
+    CheckUpdater,
+    InstallUpdater(self_update::Update),
     Check { notify: bool },
     CheckAndInstall,
     Install(UpdatePlan),
@@ -120,6 +126,11 @@ struct UpdaterApp {
     show_about: bool,
     startup_pending: bool,
     confirmation: Option<UpdatePlan>,
+    updater_startup_pending: bool,
+    updater_confirmation: Option<self_update::Update>,
+    updater_status: String,
+    restart: Option<std::path::PathBuf>,
+    restarting: bool,
 }
 
 impl UpdaterApp {
@@ -153,6 +164,11 @@ impl UpdaterApp {
             show_about: false,
             startup_pending,
             confirmation: None,
+            updater_startup_pending: true,
+            updater_confirmation: None,
+            updater_status: "Noch nicht geprüft".into(),
+            restart: None,
+            restarting: false,
         }
     }
 
@@ -164,6 +180,17 @@ impl UpdaterApp {
     }
 
     fn check_on_startup(&mut self, context: &egui::Context) {
+        if self.restarting
+            || self.busy
+            || self.confirmation.is_some()
+            || self.updater_confirmation.is_some()
+        {
+            return;
+        }
+        if std::mem::take(&mut self.updater_startup_pending) {
+            self.begin(context, Operation::CheckUpdater);
+            return;
+        }
         if !std::mem::take(&mut self.startup_pending) {
             return;
         }
@@ -173,6 +200,17 @@ impl UpdaterApp {
             return;
         }
         self.begin(context, Operation::Check { notify: true });
+    }
+
+    fn updater_confirmation_response(&mut self, accepted: bool) -> Option<self_update::Update> {
+        let update = self.updater_confirmation.take();
+        if accepted {
+            update
+        } else {
+            self.status = "Updater-Update abgebrochen. Die EXE bleibt unverändert.".into();
+            self.record(self.status.clone());
+            None
+        }
     }
 
     fn confirmation_response(&mut self, accepted: bool) -> Option<UpdatePlan> {
@@ -200,10 +238,22 @@ impl UpdaterApp {
             }
         }
         self.busy = true;
-        self.error = None;
-        self.plan = None;
+        if !matches!(operation, Operation::CheckUpdater) {
+            self.error = None;
+        }
+        if !matches!(
+            operation,
+            Operation::CheckUpdater | Operation::InstallUpdater(_)
+        ) {
+            self.plan = None;
+        }
         self.confirmation = None;
-        self.status = "Prüfung läuft ...".into();
+        let checking_updater = matches!(operation, Operation::CheckUpdater);
+        self.status = if checking_updater {
+            "Neue Updater-Version wird gesucht ...".into()
+        } else {
+            "Vorgang läuft ...".into()
+        };
         let settings = self.settings.clone();
         let (sender, receiver) = mpsc::channel();
         self.receiver = Some(receiver);
@@ -217,6 +267,16 @@ impl UpdaterApp {
             let result =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> anyhow::Result<()> {
                     let (plan, install, notify) = match operation {
+                        Operation::CheckUpdater => {
+                            emit(Event::UpdaterChecked(self_update::check()?));
+                            return Ok(());
+                        }
+                        Operation::InstallUpdater(update) => {
+                            emit(Event::UpdaterInstalled(self_update::install(
+                                &update, &progress,
+                            )?));
+                            return Ok(());
+                        }
                         Operation::Check { notify } => {
                             (service::check(&settings, &progress)?, false, notify)
                         }
@@ -253,6 +313,7 @@ impl UpdaterApp {
                     Ok(())
                 }));
             match result {
+                Ok(Err(error)) if checking_updater => emit(Event::UpdaterCheckFailed(format!("{error:#}"))),
                 Ok(Err(error)) => emit(Event::Failed(format!("{error:#}"))),
                 Err(_) => emit(Event::Failed("Unerwarteter Programmfehler. Bitte das Protokoll und gegebenenfalls den Sicherungsordner prüfen.".into())),
                 Ok(Ok(())) => (),
@@ -268,6 +329,26 @@ impl UpdaterApp {
             .unwrap_or_default();
         for event in events {
             match event {
+                Event::UpdaterChecked(update) => {
+                    self.updater_status = match &update {
+                        Some(update) => format!("Updater {} verfügbar", update.version),
+                        None => format!("Updater {} ist aktuell", env!("CARGO_PKG_VERSION")),
+                    };
+                    self.status = self.updater_status.clone();
+                    self.record(self.updater_status.clone());
+                    self.updater_confirmation = update;
+                    self.busy = false;
+                }
+                Event::UpdaterCheckFailed(message) => {
+                    self.updater_status = format!("Updater-Prüfung nicht möglich: {message}");
+                    self.status = self.updater_status.clone();
+                    self.record(self.updater_status.clone());
+                    self.busy = false;
+                }
+                Event::UpdaterInstalled(executable) => {
+                    self.restart = Some(executable);
+                    self.busy = false;
+                }
                 Event::Progress(message) => {
                     self.status = message.clone();
                     self.record(message);
@@ -297,6 +378,25 @@ impl UpdaterApp {
 impl eframe::App for UpdaterApp {
     fn update(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
+        if self.restarting {
+            context.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+        if let Some(executable) = self.restart.take() {
+            match std::process::Command::new(executable).spawn() {
+                Ok(_) => {
+                    self.restarting = true;
+                    context.send_viewport_cmd(egui::ViewportCommand::Close);
+                    return;
+                }
+                Err(error) => {
+                    self.startup_pending = false;
+                    self.status = "Updater installiert. Bitte manuell neu starten.".into();
+                    self.error = Some(format!("Updater installiert, Neustart fehlgeschlagen: {error}. Bitte das Programm schließen und erneut starten."));
+                    self.record(self.error.clone().unwrap());
+                }
+            }
+        }
         self.check_on_startup(context);
         if self.busy && context.input(|input| input.viewport().close_requested()) {
             context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -364,74 +464,81 @@ impl eframe::App for UpdaterApp {
                     .id_salt("workspace")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.add_enabled_ui(!self.busy && self.confirmation.is_none(), |ui| {
-                            ui.horizontal(|ui| {
-                                ui.heading("Verbindung und Client");
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if symbol_button(
-                                            ui,
-                                            egui::include_image!("../assets/save.svg"),
-                                            "Einstellungen speichern",
-                                        )
-                                        .clicked()
-                                        {
-                                            match config::save(&self.settings) {
-                                                Ok(()) => {
-                                                    self.status =
-                                                        "Einstellungen gespeichert".into();
-                                                    self.error = None;
-                                                }
-                                                Err(error) => {
-                                                    self.error = Some(format!("{error:#}"))
+                        ui.add_enabled_ui(
+                            !self.busy
+                                && self.confirmation.is_none()
+                                && self.updater_confirmation.is_none(),
+                            |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.heading("Verbindung und Client");
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if symbol_button(
+                                                ui,
+                                                egui::include_image!("../assets/save.svg"),
+                                                "Einstellungen speichern",
+                                            )
+                                            .clicked()
+                                            {
+                                                match config::save(&self.settings) {
+                                                    Ok(()) => {
+                                                        self.status =
+                                                            "Einstellungen gespeichert".into();
+                                                        self.error = None;
+                                                    }
+                                                    Err(error) => {
+                                                        self.error = Some(format!("{error:#}"))
+                                                    }
                                                 }
                                             }
-                                        }
-                                    },
+                                        },
+                                    );
+                                });
+                                ui.label(egui::RichText::new("SVWS-Serveradresse").color(MUTED));
+                                let address = ui.add(
+                                    egui::TextEdit::singleline(&mut self.settings.server_url)
+                                        .hint_text("https://schule.example.org/")
+                                        .margin(egui::vec2(12.0, 11.0))
+                                        .font(egui::FontId::proportional(16.0))
+                                        .desired_width(f32::INFINITY),
                                 );
-                            });
-                            ui.label(egui::RichText::new("SVWS-Serveradresse").color(MUTED));
-                            let address = ui.add(
-                                egui::TextEdit::singleline(&mut self.settings.server_url)
-                                    .hint_text("https://schule.example.org/")
-                                    .margin(egui::vec2(12.0, 11.0))
-                                    .font(egui::FontId::proportional(16.0))
-                                    .desired_width(f32::INFINITY),
-                            );
-                            ui.label(egui::RichText::new("SchILD3-Clientordner").color(MUTED));
-                            let mut changed = address.changed();
-                            ui.horizontal(|ui| {
-                                changed |= ui
-                                    .add_sized(
-                                        [(ui.available_width() - 56.0).max(100.0), 44.0],
-                                        egui::TextEdit::singleline(&mut self.settings.client_dir)
+                                ui.label(egui::RichText::new("SchILD3-Clientordner").color(MUTED));
+                                let mut changed = address.changed();
+                                ui.horizontal(|ui| {
+                                    changed |= ui
+                                        .add_sized(
+                                            [(ui.available_width() - 56.0).max(100.0), 44.0],
+                                            egui::TextEdit::singleline(
+                                                &mut self.settings.client_dir,
+                                            )
                                             .margin(egui::vec2(12.0, 11.0))
                                             .font(egui::FontId::proportional(16.0))
                                             .hint_text(
                                                 r"C:\SchILD3 oder \\Server\Freigabe\SchILD3",
                                             ),
+                                        )
+                                        .changed();
+                                    if symbol_button(
+                                        ui,
+                                        egui::include_image!("../assets/folder-open.svg"),
+                                        "Clientordner auswählen",
                                     )
-                                    .changed();
-                                if symbol_button(
-                                    ui,
-                                    egui::include_image!("../assets/folder-open.svg"),
-                                    "Clientordner auswählen",
-                                )
-                                .clicked()
-                                {
-                                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                        self.settings.client_dir =
-                                            path.to_string_lossy().into_owned();
-                                        changed = true;
+                                    .clicked()
+                                    {
+                                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                            self.settings.client_dir =
+                                                path.to_string_lossy().into_owned();
+                                            changed = true;
+                                        }
                                     }
+                                });
+                                if changed {
+                                    self.plan = None;
+                                    self.status = "Einstellungen geändert".into();
                                 }
-                            });
-                            if changed {
-                                self.plan = None;
-                                self.status = "Einstellungen geändert".into();
-                            }
-                        });
+                            },
+                        );
                         ui.add_space(8.0);
                         ui.separator();
                         ui.heading("Versionsabgleich");
@@ -469,29 +576,34 @@ impl eframe::App for UpdaterApp {
                             }
                         });
                         ui.separator();
-                        ui.add_enabled_ui(!self.busy && self.confirmation.is_none(), |ui| {
-                            ui.horizontal_wrapped(|ui| {
-                                if ui
-                                    .add_sized([132.0, 44.0], egui::Button::new("Nur prüfen"))
-                                    .clicked()
-                                {
-                                    self.begin(context, Operation::Check { notify: false });
-                                }
-                                if ui
-                                    .add_sized(
-                                        [260.0, 44.0],
-                                        egui::Button::new(
-                                            egui::RichText::new("Prüfen und aktualisieren")
-                                                .color(egui::Color32::WHITE),
+                        ui.add_enabled_ui(
+                            !self.busy
+                                && self.confirmation.is_none()
+                                && self.updater_confirmation.is_none(),
+                            |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui
+                                        .add_sized([132.0, 44.0], egui::Button::new("Nur prüfen"))
+                                        .clicked()
+                                    {
+                                        self.begin(context, Operation::Check { notify: false });
+                                    }
+                                    if ui
+                                        .add_sized(
+                                            [260.0, 44.0],
+                                            egui::Button::new(
+                                                egui::RichText::new("Prüfen und aktualisieren")
+                                                    .color(egui::Color32::WHITE),
+                                            )
+                                            .fill(BRAND),
                                         )
-                                        .fill(BRAND),
-                                    )
-                                    .clicked()
-                                {
-                                    self.begin(context, Operation::CheckAndInstall);
-                                }
-                            });
-                        });
+                                        .clicked()
+                                    {
+                                        self.begin(context, Operation::CheckAndInstall);
+                                    }
+                                });
+                            },
+                        );
                         ui.horizontal_wrapped(|ui| {
                             if self.busy {
                                 ui.spinner();
@@ -549,6 +661,7 @@ impl eframe::App for UpdaterApp {
                             });
                     });
             });
+        let mut check_updater = false;
         egui::Window::new("Über SchILD3 Updater")
             .open(&mut self.show_about)
             .default_width(540.0)
@@ -561,6 +674,17 @@ impl eframe::App for UpdaterApp {
                 ));
                 ui.hyperlink_to("optima-computer.de", WEBSITE);
                 ui.separator();
+                ui.hyperlink_to("GitHub-Releases", self_update::RELEASES_PAGE);
+                ui.add(egui::Label::new(&self.updater_status).wrap());
+                check_updater = ui
+                    .add_enabled(
+                        !self.busy
+                            && self.confirmation.is_none()
+                            && self.updater_confirmation.is_none(),
+                        egui::Button::new("Auf Updater-Update prüfen"),
+                    )
+                    .clicked();
+                ui.separator();
                 ui.collapsing("Lizenzen der Bedienicons (Lucide)", |ui| {
                     egui::ScrollArea::vertical()
                         .max_height(240.0)
@@ -569,6 +693,39 @@ impl eframe::App for UpdaterApp {
                         });
                 });
             });
+        if check_updater {
+            self.begin(context, Operation::CheckUpdater);
+        }
+        if let Some(update) = self.updater_confirmation.clone() {
+            let mut open = true;
+            let mut accepted = false;
+            let mut cancelled = false;
+            egui::Window::new("Neue Updater-Version verfügbar")
+                .id(egui::Id::new("updater_confirmation"))
+                .open(&mut open)
+                .order(egui::Order::Foreground)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .collapsible(false)
+                .resizable(false)
+                .default_width(480.0)
+                .show(context, |ui| {
+                    ui.label(format!("SchILD3 Updater {} → {}", env!("CARGO_PKG_VERSION"), update.version));
+                    ui.add(egui::Label::new("Die neue Updater-EXE wird von GitHub geladen. Anschließend startet der Updater neu. Einstellungen und Clientdateien bleiben erhalten.").wrap());
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        accepted = ui.add_sized([120.0, 44.0], egui::Button::new(egui::RichText::new("OK").color(egui::Color32::WHITE)).fill(BRAND)).clicked();
+                        cancelled = ui.add_sized([140.0, 44.0], egui::Button::new("Abbrechen")).clicked();
+                    });
+                });
+            if !open || cancelled || context.input(|input| input.key_pressed(egui::Key::Escape)) {
+                self.updater_confirmation_response(false);
+                context.request_repaint();
+            } else if accepted {
+                if let Some(update) = self.updater_confirmation_response(true) {
+                    self.begin(context, Operation::InstallUpdater(update));
+                }
+            }
+        }
         if let Some(plan) = self.confirmation.clone() {
             let mut open = true;
             let mut accepted = false;
@@ -677,6 +834,11 @@ mod tests {
             show_about: false,
             startup_pending: true,
             confirmation: None,
+            updater_startup_pending: false,
+            updater_confirmation: None,
+            updater_status: "Noch nicht geprüft".into(),
+            restart: None,
+            restarting: false,
         };
         (context, app)
     }
@@ -754,6 +916,80 @@ mod tests {
         app.poll();
         assert!(app.confirmation.is_none());
         assert!(!app.busy);
+    }
+
+    #[test]
+    fn updater_offer_waits_for_consent_before_client_check() {
+        let (context, mut app) = test_app();
+        let (sender, receiver) = mpsc::channel();
+        app.receiver = Some(receiver);
+        app.busy = true;
+        sender
+            .send(Event::UpdaterChecked(Some(self_update::Update {
+                version: semver::Version::new(0, 3, 0),
+                asset: test_plan().asset,
+            })))
+            .unwrap();
+        app.poll();
+        app.check_on_startup(&context);
+        assert!(app.startup_pending);
+        assert!(!app.busy);
+        assert!(app.restart.is_none());
+        assert!(app.updater_confirmation_response(false).is_none());
+        app.check_on_startup(&context);
+        assert!(!app.startup_pending);
+        assert!(app.updater_confirmation.is_none());
+    }
+
+    #[test]
+    fn updater_check_failure_does_not_block_client_startup() {
+        let (context, mut app) = test_app();
+        let (sender, receiver) = mpsc::channel();
+        app.receiver = Some(receiver);
+        app.busy = true;
+        sender
+            .send(Event::UpdaterCheckFailed("GitHub 404".into()))
+            .unwrap();
+        app.poll();
+        app.check_on_startup(&context);
+        assert!(!app.busy);
+        assert!(!app.startup_pending);
+        assert!(app.error.is_none());
+        assert!(app.log.iter().any(|message| message.contains("GitHub 404")));
+    }
+
+    #[test]
+    fn restarting_does_not_begin_another_client_check() {
+        let (context, mut app) = test_app();
+        app.restarting = true;
+        app.settings = test_plan().settings;
+        app.check_on_startup(&context);
+        assert!(app.startup_pending);
+        assert!(!app.busy);
+        assert!(app.receiver.is_none());
+    }
+
+    #[test]
+    fn updater_consent_is_consumed_only_once() {
+        let (_, mut app) = test_app();
+        app.updater_confirmation = Some(self_update::Update {
+            version: semver::Version::new(0, 3, 0),
+            asset: test_plan().asset,
+        });
+        assert_eq!(
+            app.updater_confirmation_response(true).unwrap().version,
+            semver::Version::new(0, 3, 0)
+        );
+        assert!(app.updater_confirmation_response(true).is_none());
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn windows_version_matches_package_version() {
+        assert_eq!(
+            schild3_updater::version_info::read_version(&std::env::current_exe().unwrap()).unwrap(),
+            semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap(),
+        );
     }
 
     #[test]

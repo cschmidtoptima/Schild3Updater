@@ -1,0 +1,54 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Validate Version Tag
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed.' }
+          $version = ($metadata.packages | Where-Object name -eq 'schild3-updater').version
+          if ($version -notmatch '^\d+\.\d+\.\d+$' -or $env:GITHUB_REF_NAME -ne "v$version") {
+            throw 'The tag must match the stable version in Cargo.toml (vMAJOR.MINOR.PATCH).'
+          }
+      - name: Test
+        run: cargo test --locked
+      - name: Build Standalone Windows EXE
+        run: cargo build --release --locked
+      - name: Prepare Assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/schild3-updater.exe release/SchILD3Updater.exe
+          Copy-Item LICENSE,README.md release/
+          Copy-Item assets/lucide-LICENSE release/lucide-LICENSE
+          $metadata = cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed.' }
+          $version = ($metadata.packages | Where-Object name -eq 'schild3-updater').version
+          $info = (Get-Item release/SchILD3Updater.exe).VersionInfo
+          if ("$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart)" -ne $version) {
+            throw 'The Windows file version does not match the release.'
+          }
+          $hash = (Get-FileHash release/SchILD3Updater.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  SchILD3Updater.exe" | Out-File release/SHA256SUMS.txt -Encoding ascii
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release create $env:GITHUB_REF_NAME release/SchILD3Updater.exe release/SHA256SUMS.txt release/LICENSE release/README.md release/lucide-LICENSE --repo $env:GITHUB_REPOSITORY --verify-tag --title "SchILD3 Updater $env:GITHUB_REF_NAME" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing the release failed.' }
