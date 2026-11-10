@@ -12,8 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tree = resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default())?;
     let mut frames = Vec::new();
     for size in [16, 24, 32, 48, 64, 128, 256] {
-        let mut pixmap =
-            resvg::tiny_skia::Pixmap::new(size, size).ok_or("Icongroesse ungueltig")?;
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size).ok_or("Icongröße ungültig")?;
         resvg::render(
             &tree,
             resvg::tiny_skia::Transform::from_scale(size as f32 / 256.0, size as f32 / 256.0),
@@ -48,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let native_version =
             (u64::from(major) << 48) | (u64::from(minor) << 32) | (u64::from(patch) << 16);
         winresource::WindowsResource::new()
-            .set_icon(icon_path.to_str().ok_or("Ungueltiger Iconpfad")?)
+            .set_icon(icon_path.to_str().ok_or("Ungültiger Iconpfad")?)
             .set("CompanyName", "OPTIMA Computer Service")
             .set("ProductName", "SchILD3 Updater")
             .set("FileDescription", "OPTIMA SchILD3 Updater")

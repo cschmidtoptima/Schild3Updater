@@ -55,7 +55,7 @@ pub fn read_version(path: &Path) -> Result<Version> {
         }
         let fields = value.cast::<u32>();
         if fields.read_unaligned() != 0xFEEF04BD {
-            bail!("Ungueltige Windows-Versionsinformation.");
+            bail!("Ungültige Windows-Versionsinformation.");
         }
         let high = fields.add(2).read_unaligned();
         let low = fields.add(3).read_unaligned();
@@ -69,10 +69,10 @@ pub fn read_version(path: &Path) -> Result<Version> {
 
 #[cfg(not(windows))]
 pub fn read_version(_path: &Path) -> Result<Version> {
-    bail!("Windows-Dateiversionen koennen nur unter Windows gelesen werden.")
+    bail!("Windows-Dateiversionen können nur unter Windows gelesen werden.")
 }
 
 pub fn client_version(directory: &Path) -> Result<Version> {
     read_version(&directory.join(CLIENT_EXE))
-        .context("Bitte einen vorhandenen SchILD3-Clientordner auswaehlen.")
+        .context("Bitte einen vorhandenen SchILD3-Clientordner auswählen.")
 }

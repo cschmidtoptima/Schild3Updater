@@ -30,7 +30,7 @@ pub fn select_release(release: service::Release, current: &Version) -> Result<Op
             .strip_prefix('v')
             .unwrap_or(&release.tag_name),
     )
-    .context("Der Updater-Release hat keinen gueltigen SemVer-Versionstag.")?;
+    .context("Der Updater-Release hat keinen gültigen SemVer-Versionstag.")?;
     if !version.pre.is_empty() || version <= *current {
         return Ok(None);
     }
@@ -38,7 +38,7 @@ pub fn select_release(release: service::Release, current: &Version) -> Result<Op
         .assets
         .into_iter()
         .find(|asset| asset.name == ASSET_NAME)
-        .context("Der neue Updater-Release enthaelt keine SchILD3Updater.exe.")?;
+        .context("Der neue Updater-Release enthält keine SchILD3Updater.exe.")?;
     expected_digest(&asset)?;
     ensure!(
         asset.browser_download_url == format!("{DOWNLOAD_PREFIX}{}/{ASSET_NAME}", release.tag_name),
@@ -53,14 +53,14 @@ pub fn check() -> Result<Option<Update>> {
         .timeout(Duration::from_secs(20))
         .send()?;
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        bail!("Noch kein oeffentlich erreichbarer Updater-Release vorhanden (GitHub 404). Private Repositorys werden nicht unterstuetzt.");
+        bail!("Noch kein öffentlich erreichbarer Updater-Release vorhanden (GitHub 404). Private Repositorys werden nicht unterstützt.");
     }
     let response = response.error_for_status()?;
     let mut bytes = Vec::new();
     response.take(1024 * 1024 + 1).read_to_end(&mut bytes)?;
     ensure!(
         bytes.len() <= 1024 * 1024,
-        "GitHub-Releaseantwort ist zu gross."
+        "GitHub-Releaseantwort ist zu groß."
     );
     select_release(
         serde_json::from_slice(&bytes)?,
@@ -73,10 +73,10 @@ fn expected_digest(asset: &service::Asset) -> Result<String> {
         .digest
         .as_deref()
         .and_then(|value| value.strip_prefix("sha256:"))
-        .context("GitHub liefert keine SHA-256-Pruefsumme fuer die Updater-EXE.")?;
+        .context("GitHub liefert keine SHA-256-Prüfsumme für die Updater-EXE.")?;
     ensure!(
         digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()),
-        "Ungueltige SHA-256-Pruefsumme fuer die Updater-EXE."
+        "Ungültige SHA-256-Prüfsumme für die Updater-EXE."
     );
     Ok(digest.to_ascii_lowercase())
 }
@@ -94,7 +94,7 @@ pub fn download(update: &Update, progress: &impl Fn(String)) -> Result<tempfile:
             && url.path().ends_with("/SchILD3Updater.exe")
             && url.query().is_none()
             && url.fragment().is_none(),
-        "Unerlaubte Downloadadresse fuer die Updater-EXE."
+        "Unerlaubte Downloadadresse für die Updater-EXE."
     );
     let expected = expected_digest(&update.asset)?;
     progress(format!(
@@ -107,7 +107,7 @@ pub fn download(update: &Update, progress: &impl Fn(String)) -> Result<tempfile:
         .error_for_status()?;
     ensure!(
         response.content_length().unwrap_or(0) <= MAX_DOWNLOAD,
-        "Updater-Download ist zu gross."
+        "Updater-Download ist zu groß."
     );
     let mut file = tempfile::Builder::new()
         .prefix("schild3-updater-")
@@ -122,18 +122,18 @@ pub fn download(update: &Update, progress: &impl Fn(String)) -> Result<tempfile:
             break;
         }
         total += count as u64;
-        ensure!(total <= MAX_DOWNLOAD, "Updater-Download ist zu gross.");
+        ensure!(total <= MAX_DOWNLOAD, "Updater-Download ist zu groß.");
         hash.update(&buffer[..count]);
         file.write_all(&buffer[..count])?;
     }
     file.as_file().sync_all()?;
     ensure!(
         format!("{:x}", hash.finalize()) == expected,
-        "SHA-256-Pruefung der Updater-EXE fehlgeschlagen."
+        "SHA-256-Prüfung der Updater-EXE fehlgeschlagen."
     );
     ensure!(
         version_info::read_version(file.path())? == update.version,
-        "Die Dateiversion der Updater-EXE stimmt nicht mit dem Release ueberein."
+        "Die Dateiversion der Updater-EXE stimmt nicht mit dem Release überein."
     );
     Ok(file)
 }
@@ -142,8 +142,9 @@ pub fn install(update: &Update, progress: &impl Fn(String)) -> Result<PathBuf> {
     let executable = std::env::current_exe()?;
     let file = download(update, progress)?;
     progress("Updater-EXE wird ersetzt ...".into());
-    self_replace::self_replace(file.path())
-        .context("Updater konnte nicht ersetzt werden. Schreibrechte und weitere laufende Instanzen pruefen.")?;
+    self_replace::self_replace(file.path()).context(
+        "Updater konnte nicht ersetzt werden. Schreibrechte und weitere laufende Instanzen prüfen.",
+    )?;
     Ok(executable)
 }
 

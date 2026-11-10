@@ -50,7 +50,7 @@ pub fn http_client() -> Result<Client> {
 
 pub fn server_version(client: &Client, address: &str) -> Result<Version> {
     let mut url = Url::parse(address.trim())
-        .context("Bitte eine vollstaendige HTTPS-Serveradresse eingeben.")?;
+        .context("Bitte eine vollständige HTTPS-Serveradresse eingeben.")?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -70,7 +70,7 @@ pub fn server_version(client: &Client, address: &str) -> Result<Version> {
     let mut text = String::new();
     response.take(4097).read_to_string(&mut text)?;
     if text.len() > 4096 {
-        bail!("Unerwartet grosse Antwort des Versionsendpunkts.");
+        bail!("Unerwartet große Antwort des Versionsendpunkts.");
     }
     let text = serde_json::from_str::<String>(&text).unwrap_or_else(|_| text.trim().to_owned());
     Version::parse(text.trim().trim_start_matches('v'))
@@ -102,7 +102,7 @@ pub fn select_release(releases: Vec<Release>, server: &Version) -> Result<(Versi
         }
     }
     candidates.sort_by(|left, right| right.0.cmp(&left.0));
-    candidates.into_iter().next().context("Kein ausdruecklich fuer diese Serverversion freigegebenes Client-ZIP gefunden. Es werden keine Dateien veraendert.")
+    candidates.into_iter().next().context("Kein ausdrücklich für diese Serverversion freigegebenes Client-ZIP gefunden. Es werden keine Dateien verändert.")
 }
 
 pub fn check(settings: &Settings, progress: &impl Fn(String)) -> Result<UpdatePlan> {
@@ -135,7 +135,7 @@ pub fn check(settings: &Settings, progress: &impl Fn(String)) -> Result<UpdatePl
     }
     let (target, asset) = select_release(releases, &server)?;
     if installed > target {
-        bail!("Installierter Client {installed} ist neuer als die freigegebene Version {target} fuer Server {server}. Automatisches Downgrade ist gesperrt.");
+        bail!("Installierter Client {installed} ist neuer als die freigegebene Version {target} für Server {server}. Automatisches Downgrade ist gesperrt.");
     }
     Ok(UpdatePlan {
         settings: settings.clone(),
@@ -160,15 +160,20 @@ pub fn download(
     {
         bail!("Downloadadresse liegt nicht im offiziellen Release-Repository.");
     }
-    let expected = asset.digest.as_deref().and_then(|value| value.strip_prefix("sha256:"))
+    let expected = asset
+        .digest
+        .as_deref()
+        .and_then(|value| value.strip_prefix("sha256:"))
         .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .context("GitHub liefert fuer dieses Paket keine gueltige SHA-256-Pruefsumme. Update abgebrochen.")?;
+        .context(
+            "GitHub liefert für dieses Paket keine gültige SHA-256-Prüfsumme. Update abgebrochen.",
+        )?;
     let mut response = client.get(url).send()?.error_for_status()?;
     if response
         .content_length()
         .is_some_and(|size| size > MAX_DOWNLOAD)
     {
-        bail!("Updatepaket ist zu gross.");
+        bail!("Updatepaket ist zu groß.");
     }
     let mut temporary = tempfile::NamedTempFile::new()?;
     let mut hash = Sha256::new();
@@ -182,7 +187,7 @@ pub fn download(
         }
         total += count as u64;
         if total > MAX_DOWNLOAD {
-            bail!("Updatepaket ueberschreitet das Downloadlimit.");
+            bail!("Updatepaket überschreitet das Downloadlimit.");
         }
         temporary.write_all(&buffer[..count])?;
         hash.update(&buffer[..count]);
@@ -193,7 +198,7 @@ pub fn download(
         }
     }
     if format!("{:x}", hash.finalize()) != expected.to_ascii_lowercase() {
-        bail!("SHA-256-Pruefsumme stimmt nicht. Update wurde verworfen.");
+        bail!("SHA-256-Prüfsumme stimmt nicht. Update wurde verworfen.");
     }
     temporary.flush()?;
     Ok(temporary)
@@ -205,7 +210,7 @@ pub fn update(plan: &UpdatePlan, progress: &impl Fn(String)) -> Result<std::path
     if server_version(&client, &plan.settings.server_url)? != plan.server
         || version_info::client_version(directory)? != plan.installed
     {
-        bail!("Server- oder Clientversion hat sich geaendert. Bitte erneut pruefen.");
+        bail!("Server- oder Clientversion hat sich geändert. Bitte erneut prüfen.");
     }
     if plan.installed >= plan.target {
         bail!("Kein Update erforderlich.");
@@ -227,7 +232,7 @@ pub fn update(plan: &UpdatePlan, progress: &impl Fn(String)) -> Result<std::path
         bail!("server.json im Paket passt nicht zum Server. Keine Installation.");
     }
     if server_version(&client, &plan.settings.server_url)? != plan.server {
-        bail!("Serverversion hat sich waehrend des Downloads geaendert. Bitte erneut pruefen.");
+        bail!("Serverversion hat sich während des Downloads geändert. Bitte erneut prüfen.");
     }
     progress("Paket verifiziert. Dateien werden gesichert und aktualisiert ...".into());
     install::apply(
@@ -292,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Expliziter Netzwerktest mit offiziellem ZIP und temporaerem Clientordner"]
+    #[ignore = "Expliziter Netzwerktest mit offiziellem ZIP und temporärem Clientordner"]
     fn official_release_end_to_end() {
         let archive =
             std::env::var_os("SCHILD3_TEST_ARCHIVE").expect("SCHILD3_TEST_ARCHIVE setzen");
@@ -303,7 +308,11 @@ mod tests {
         let original = std::fs::read(extracted.path().join(version_info::CLIENT_EXE)).unwrap();
         std::fs::write(client.path().join(version_info::CLIENT_EXE), &original).unwrap();
         std::fs::create_dir(client.path().join("EigeneDaten")).unwrap();
-        std::fs::write(client.path().join("EigeneDaten/lokal.ini"), b"unveraendert").unwrap();
+        std::fs::write(
+            client.path().join("EigeneDaten/lokal.ini"),
+            "unverändert".as_bytes(),
+        )
+        .unwrap();
         let settings = Settings {
             server_url: address,
             client_dir: client.path().to_string_lossy().into_owned(),
@@ -312,7 +321,7 @@ mod tests {
         let plan = check(&settings, &progress).unwrap();
         assert!(
             plan.installed < plan.target,
-            "Fuer diesen Test ein aelteres offizielles ZIP verwenden"
+            "Für diesen Test ein älteres offizielles ZIP verwenden"
         );
         let backup = update(&plan, &progress).unwrap();
         assert_eq!(
@@ -321,7 +330,7 @@ mod tests {
         );
         assert_eq!(
             std::fs::read(client.path().join("EigeneDaten/lokal.ini")).unwrap(),
-            b"unveraendert"
+            "unverändert".as_bytes()
         );
         assert_eq!(
             std::fs::read(backup.join("originals").join(version_info::CLIENT_EXE)).unwrap(),

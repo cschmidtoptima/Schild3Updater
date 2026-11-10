@@ -60,18 +60,18 @@ pub fn extract(archive: &Path, destination: &Path) -> Result<()> {
         }
         total = total
             .checked_add(entry.size())
-            .context("Archivgroesse ungueltig.")?;
+            .context("Archivgröße ungültig.")?;
         if total > MAX_EXPANDED {
-            bail!("Entpacktes Update ist zu gross.");
+            bail!("Entpacktes Update ist zu groß.");
         }
-        fs::create_dir_all(target.parent().context("Ungueltiger Archivpfad.")?)?;
+        fs::create_dir_all(target.parent().context("Ungültiger Archivpfad.")?)?;
         let mut output = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(target)?;
         let copied = std::io::copy(&mut (&mut entry).take(MAX_EXPANDED + 1), &mut output)?;
         if copied != entry.size() {
-            bail!("Dateigroesse im Archiv stimmt nicht.");
+            bail!("Dateigröße im Archiv stimmt nicht.");
         }
         output.sync_all()?;
     }
@@ -84,11 +84,11 @@ fn ordinary(path: &Path) -> Result<()> {
     {
         use std::os::windows::fs::MetadataExt;
         if metadata.file_attributes() & 0x400 != 0 {
-            bail!("Verknuepfung/Junction nicht erlaubt: {}", path.display());
+            bail!("Verknüpfung/Junction nicht erlaubt: {}", path.display());
         }
     }
     if metadata.file_type().is_symlink() {
-        bail!("Verknuepfung nicht erlaubt: {}", path.display());
+        bail!("Verknüpfung nicht erlaubt: {}", path.display());
     }
     Ok(())
 }
@@ -103,14 +103,14 @@ fn collect(root: &Path, relative: &Path, files: &mut Vec<PathBuf>) -> Result<()>
         } else if entry.file_type()?.is_file() {
             files.push(path);
         } else {
-            bail!("Nicht unterstuetzter Dateityp im Update.");
+            bail!("Nicht unterstützter Dateityp im Update.");
         }
     }
     Ok(())
 }
 
 fn atomic_copy(source: &Path, destination: &Path) -> Result<()> {
-    let parent = destination.parent().context("Zielpfad ungueltig.")?;
+    let parent = destination.parent().context("Zielpfad ungültig.")?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
     std::io::copy(&mut File::open(source)?, temporary.as_file_mut())?;
     temporary.as_file().sync_all()?;
@@ -138,7 +138,7 @@ pub fn ensure_no_interrupted_update(target: &Path) -> Result<()> {
             && !backup.join("completed").exists()
             && !backup.join("rolled-back").exists()
         {
-            bail!("Ein unterbrochenes Update wurde gefunden. Vor einem weiteren Update die Sicherung manuell pruefen/wiederherstellen: {}", backup.display());
+            bail!("Ein unterbrochenes Update wurde gefunden. Vor einem weiteren Update die Sicherung manuell prüfen/wiederherstellen: {}", backup.display());
         }
     }
     Ok(())
@@ -166,7 +166,7 @@ pub fn apply(
         .context("Ein anderer Updater verwendet diesen Clientordner.")?;
     ensure_no_interrupted_update(target)?;
     if crate::version_info::client_version(target)? != *installed {
-        bail!("Clientversion hat sich geaendert. Bitte erneut pruefen.");
+        bail!("Clientversion hat sich geändert. Bitte erneut prüfen.");
     }
     let result = apply_files(staging, target, &|_| Ok(()), &|| {
         if crate::version_info::client_version(target)? != *expected {
@@ -212,7 +212,7 @@ fn apply_files(
             }
             options.open(&destination).with_context(|| {
                 format!(
-                    "Bitte SchILD3 schliessen. Datei gesperrt oder schreibgeschuetzt: {}",
+                    "Bitte SchILD3 schließen. Datei gesperrt oder schreibgeschützt: {}",
                     destination.display()
                 )
             })?;
@@ -233,7 +233,7 @@ fn apply_files(
         let source = target.join(relative);
         if source.exists() {
             let saved = originals.join(relative);
-            fs::create_dir_all(saved.parent().context("Sicherungspfad ungueltig.")?)?;
+            fs::create_dir_all(saved.parent().context("Sicherungspfad ungültig.")?)?;
             atomic_copy(&source, &saved)?;
             existing.insert(relative.clone());
         }
@@ -249,12 +249,12 @@ fn apply_files(
             before_copy(index)?;
             let destination = target.join(relative);
             let mut missing = Vec::new();
-            let mut parent = destination.parent().context("Zielpfad ungueltig.")?;
+            let mut parent = destination.parent().context("Zielpfad ungültig.")?;
             while parent != target && !parent.exists() {
                 missing.push(parent.to_path_buf());
                 parent = parent
                     .parent()
-                    .context("Zielpfad liegt ausserhalb des Clientordners.")?;
+                    .context("Zielpfad liegt außerhalb des Clientordners.")?;
             }
             for directory in missing.into_iter().rev() {
                 fs::create_dir(&directory)?;
@@ -287,12 +287,12 @@ fn apply_files(
         }
         if failures.is_empty() {
             let _ = fs::remove_file(backup.join("completed"));
-            let mut marker = File::create(backup.join("rolled-back")).with_context(|| format!("Ruecksetzung erfolgt, aber Status konnte nicht gespeichert werden. Sicherung: {}", backup.display()))?;
+            let mut marker = File::create(backup.join("rolled-back")).with_context(|| format!("Rücksetzung erfolgt, aber Status konnte nicht gespeichert werden. Sicherung: {}", backup.display()))?;
             marker.write_all(b"ok")?;
             marker.sync_all()?;
             bail!("Update fehlgeschlagen; bisherige Dateien wiederhergestellt. Sicherung: {}. Ursache: {error:#}", backup.display());
         }
-        bail!("Update fehlgeschlagen: {error:#}. Ruecksetzung unvollstaendig: {}. Sicherung fuer manuelle Wiederherstellung: {}", failures.join("; "), backup.display());
+        bail!("Update fehlgeschlagen: {error:#}. Rücksetzung unvollständig: {}. Sicherung für manuelle Wiederherstellung: {}", failures.join("; "), backup.display());
     }
     Ok(backup)
 }

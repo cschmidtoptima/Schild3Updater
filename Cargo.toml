@@ -2,7 +2,7 @@
 name = "schild3-updater"
 version = "0.2.0"
 edition = "2021"
-description = "Windows-Updater fuer SchILD3 mit SVWS-Kompatibilitaetspruefung, Sicherungen und GitHub-Selbstaktualisierung."
+description = "Windows-Updater für SchILD3 mit SVWS-Kompatibilitätsprüfung, Sicherungen und GitHub-Selbstaktualisierung."
 repository = "https://github.com/cschmidtoptima/Schild3Updater"
 readme = "README.md"
 license = "MIT"

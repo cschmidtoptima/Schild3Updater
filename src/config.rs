@@ -27,7 +27,7 @@ pub fn config_path() -> Result<PathBuf> {
 pub fn load() -> Result<Settings> {
     let path = config_path()?;
     match std::fs::read(&path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).context("Einstellungen sind ungueltig."),
+        Ok(bytes) => serde_json::from_slice(&bytes).context("Einstellungen sind ungültig."),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Settings::default()),
         Err(error) => Err(error).context("Einstellungen konnten nicht gelesen werden."),
     }
@@ -35,7 +35,7 @@ pub fn load() -> Result<Settings> {
 
 pub fn save(settings: &Settings) -> Result<()> {
     let path = config_path()?;
-    let parent = path.parent().context("Konfigurationspfad ist ungueltig.")?;
+    let parent = path.parent().context("Konfigurationspfad ist ungültig.")?;
     std::fs::create_dir_all(parent)?;
     let temporary = tempfile::NamedTempFile::new_in(parent)?;
     serde_json::to_writer_pretty(temporary.as_file(), settings)?;

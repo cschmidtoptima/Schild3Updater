@@ -86,7 +86,7 @@ fn symbol_button(
 
 fn app_icon() -> egui::IconData {
     let image = image::load_from_memory(include_bytes!(concat!(env!("OUT_DIR"), "/app-icon.png")))
-        .expect("Eingebettetes Programm-Icon ist ungueltig")
+        .expect("Eingebettetes Programm-Icon ist ungültig")
         .into_rgba8();
     egui::IconData {
         width: image.width(),
@@ -137,7 +137,7 @@ impl UpdaterApp {
     fn new(context: &eframe::CreationContext<'_>) -> Self {
         configure_appearance(&context.egui_ctx);
         let image = image::load_from_memory(include_bytes!("../assets/optima-logo-white.png"))
-            .expect("Eingebettetes Firmenlogo ist ungueltig")
+            .expect("Eingebettetes Firmenlogo ist ungültig")
             .into_rgba8();
         let logo = context.egui_ctx.load_texture(
             "optima-logo",
