@@ -1,6 +1,6 @@
 [package]
 name = "schild3-updater"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Windows-Updater für SchILD3 mit SVWS-Kompatibilitätsprüfung, Sicherungen und GitHub-Selbstaktualisierung."
 repository = "https://github.com/cschmidtoptima/Schild3Updater"

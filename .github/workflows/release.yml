@@ -79,3 +79,13 @@ jobs:
         run: |
           gh release create $env:GITHUB_REF_NAME release/SchILD3Updater.exe "release/SchILD3Updater-$env:GITHUB_REF_NAME-win-x64.zip" release/SHA256SUMS.txt release/LICENSE release/README.md release/lucide-LICENSE release/THIRD-PARTY-NOTICES.html release/font-LICENSES.zip --repo $env:GITHUB_REPOSITORY --verify-tag --title "SchILD3 Updater $env:GITHUB_REF_NAME" --generate-notes
           if ($LASTEXITCODE -ne 0) { throw 'Publishing the release failed.' }
+      - name: Verify Published Self-Update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          cargo test --locked published_release_is_detected_and_downloaded -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) {
+            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --draft
+            throw 'The published self-update test failed; the release was withdrawn.'
+          }

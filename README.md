@@ -41,13 +41,13 @@ Vor dem ersten produktiven Einsatz mit einer Testkopie prüfen und eine unabhän
 
 ## Updater-Version und Selbstaktualisierung
 
-Die Programmversion wird zentral in `Cargo.toml` gepflegt (aktuell **0.2.0**). Oberfläche, Windows-Dateiversion, Produktversion und Manifest übernehmen diese Version beim Build.
+Die Programmversion wird zentral in `Cargo.toml` gepflegt (aktuell **0.2.1**). Oberfläche, Windows-Dateiversion, Produktversion und Manifest übernehmen diese Version beim Build.
 
 Bei jedem Start prüft der Updater zunächst den neuesten stabilen Release unter <https://github.com/cschmidtoptima/Schild3Updater/releases>. Das funktioniert auch ohne konfigurierte SchILD3-Verbindung. Eine neuere Version wird mit eigenem Dialog angeboten: **OK** lädt die EXE und startet nach dem Austausch neu; **Abbrechen**, Escape oder Schließen des Dialogs lässt die EXE unverändert. Danach folgt die bisherige Clientprüfung. Unter **Info > Auf Updater-Update prüfen** kann die Prüfung erneut gestartet werden. Netzwerk-/GitHub-Fehler werden protokolliert und blockieren die Clientprüfung nicht.
 
 Nur stabile SemVer-Tags wie `v0.3.0` und das Release-Asset **SchILD3Updater.exe** aus diesem Repository werden akzeptiert. Gleich alte oder ältere Versionen, Entwürfe und Vorabversionen werden nicht installiert. Vor dem Austausch werden HTTPS-Download, Größenlimit, SHA-256-Digest aus der GitHub-API und die eingebettete Windows-Dateiversion geprüft. Der Windows-Austausch erfolgt mit `self-replace`; Einstellungen und Clientdateien werden nicht angefasst. Schreibrechte im Updater-Ordner sind erforderlich. Keine automatische Rechteerhöhung. Bei einem Stromausfall während des Austauschs kann eine manuelle Wiederherstellung erforderlich sein.
 
-Das Repository und seine Releases müssen **öffentlich erreichbar** sein. Private Repositorys ohne Anmeldung sowie fehlende Releases liefern GitHub 404; Zugangstokens werden bewusst nicht im Programm hinterlegt. Ältere Updater ohne Selbstaktualisierung müssen einmal manuell durch Version 0.2.0 oder neuer ersetzt werden.
+Das Repository und seine Releases müssen **öffentlich erreichbar** sein. Private Repositorys ohne Anmeldung sowie fehlende Releases liefern GitHub 404; Zugangstokens werden bewusst nicht im Programm hinterlegt. Ältere Updater ohne Selbstaktualisierung und Version 0.2.0 müssen einmal manuell durch Version 0.2.1 oder neuer ersetzt werden. Version 0.2.0 wurde wegen eines Fehlers beim Lesen der heruntergeladenen Windows-Dateiversion zurückgezogen.
 
 ### Neue Version veröffentlichen
 
@@ -63,7 +63,7 @@ git tag v0.3.0
 git push origin v0.3.0
 ```
 
-Für den ersten Release dieses Standes stattdessen `v0.2.0` verwenden. Erst nach erfolgreichem Workflow und veröffentlichtem Release können installierte Updater die Datei herunterladen. Die Prüfsumme in der GitHub-API kann kurz nach dem Upload noch fehlen; in diesem Fall wird das Update bis zur erneuten Prüfung nicht angeboten. Die EXE ist weiterhin nicht digital signiert; SHA-256 ersetzt keine Herausgebersignatur und schützt nicht gegen ein kompromittiertes GitHub-Konto.
+Für den ersten korrigierten Release dieses Standes stattdessen `v0.2.1` verwenden. Nach der Veröffentlichung prüft der Workflow den echten Download und den EXE-Austausch in einem isolierten Testprozess. Schlägt dieser Test fehl, wird der Release wieder zum Entwurf zurückgesetzt. Erst nach erfolgreichem Workflow und veröffentlichtem Release können installierte Updater die Datei herunterladen. Die Prüfsumme in der GitHub-API kann kurz nach dem Upload noch fehlen; in diesem Fall wird das Update bis zur erneuten Prüfung nicht angeboten. Die EXE ist weiterhin nicht digital signiert; SHA-256 ersetzt keine Herausgebersignatur und schützt nicht gegen ein kompromittiertes GitHub-Konto.
 
 ## Client-Versionsauswahl
 
@@ -112,7 +112,7 @@ $env:SCHILD3_TEST_SERVER = 'https://schule.example.org/'
 cargo test official_release_end_to_end -- --ignored --nocapture
 ```
 
-Nach der Veröffentlichung kann die Selbstaktualisierung gegen den echten GitHub-Release geprüft werden. Der Quellstand muss dem neuesten veröffentlichten Release entsprechen. Der Test simuliert einen älteren Versionsstand bei der Auswahl, prüft den EXE-Download einschließlich SHA-256 und Windows-Dateiversion und stellt sicher, dass dieselbe Version kein erneutes Update anbietet. Er ersetzt keine installierte EXE:
+Nach der Veröffentlichung kann die Selbstaktualisierung gegen den echten GitHub-Release geprüft werden. Der Quellstand muss dem neuesten veröffentlichten Release entsprechen. Der Test simuliert einen älteren Versionsstand bei der Auswahl, prüft den EXE-Download einschließlich SHA-256 und Windows-Dateiversion und stellt sicher, dass dieselbe Version kein erneutes Update anbietet. Unter Windows ersetzt er zusätzlich die eigene EXE eines isolierten Testprozesses und prüft den Erhalt benachbarter Dateien. Installierte Updater und echte Clientordner werden nicht verändert:
 
 ```powershell
 cargo test published_release_is_detected_and_downloaded -- --ignored --nocapture

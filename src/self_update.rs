@@ -131,6 +131,8 @@ pub fn download(update: &Update, progress: &impl Fn(String)) -> Result<tempfile:
         format!("{:x}", hash.finalize()) == expected,
         "SHA-256-Prüfung der Updater-EXE fehlgeschlagen."
     );
+    let path = file.into_temp_path();
+    let file = tempfile::NamedTempFile::from_parts(std::fs::File::open(&path)?, path);
     ensure!(
         version_info::read_version(file.path())? == update.version,
         "Die Dateiversion der Updater-EXE stimmt nicht mit dem Release überein."
@@ -233,12 +235,72 @@ mod tests {
             .unwrap()
             .expect("Ein älterer Updater muss den veröffentlichten Release erkennen");
         assert_eq!(update.version, current);
+        #[cfg(windows)]
+        if let Some(directory) = std::env::var_os("SCHILD3_PUBLIC_RELEASE_REPLACEMENT_TEST") {
+            let executable = std::env::current_exe().unwrap();
+            let directory = PathBuf::from(directory);
+            assert_eq!(executable.file_name().unwrap(), "UpdaterTest.exe");
+            assert_eq!(
+                std::fs::canonicalize(executable.parent().unwrap()).unwrap(),
+                std::fs::canonicalize(&directory).unwrap()
+            );
+            assert_eq!(
+                std::fs::read(directory.join("settings.json")).unwrap(),
+                b"preserve settings"
+            );
+            install(&update, &|message| println!("{message}")).unwrap();
+            return;
+        }
         let executable = download(&update, &|message| println!("{message}")).unwrap();
         assert_eq!(
             version_info::read_version(executable.path()).unwrap(),
             current
         );
         assert!(check().unwrap().is_none());
+        #[cfg(windows)]
+        {
+            use std::{fs, os::windows::process::CommandExt, process::Command};
+            let directory = tempfile::tempdir().unwrap();
+            let installed = directory.path().join("UpdaterTest.exe");
+            fs::copy(std::env::current_exe().unwrap(), &installed).unwrap();
+            fs::write(directory.path().join("settings.json"), b"preserve settings").unwrap();
+            fs::create_dir(directory.path().join("client")).unwrap();
+            fs::write(
+                directory.path().join("client/local.txt"),
+                b"preserve client",
+            )
+            .unwrap();
+            let output = Command::new(&installed)
+                .args([
+                    "--exact",
+                    "self_update::tests::published_release_is_detected_and_downloaded",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("SCHILD3_PUBLIC_RELEASE_REPLACEMENT_TEST", directory.path())
+                .creation_flags(0x08000000)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(version_info::read_version(&installed).unwrap(), current);
+            assert_eq!(
+                format!("{:x}", Sha256::digest(fs::read(installed).unwrap())),
+                expected_digest(&update.asset).unwrap()
+            );
+            assert_eq!(
+                fs::read(directory.path().join("settings.json")).unwrap(),
+                b"preserve settings"
+            );
+            assert_eq!(
+                fs::read(directory.path().join("client/local.txt")).unwrap(),
+                b"preserve client"
+            );
+        }
     }
 
     #[test]
