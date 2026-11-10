@@ -22,10 +22,6 @@ Es werden keine SVWS-Server oder Datenbanken aktualisiert. Der Updater ist ein u
 
 Das Projekt steht unter der liberalen **MIT-Lizenz**. Auch kommerzielle Nutzung, Änderungen und Weitergabe sind erlaubt; Lizenz- und Urheberrechtshinweise müssen erhalten bleiben. Details stehen im Abschnitt [Lizenz](#lizenz).
 
-## Oberfläche
-
-Die Oberfläche verwendet das eingebettete OPTIMA-Logo und einen anklickbaren Verweis auf <https://optima-computer.de/>. Das eigenständige Programm-Icon zeigt ein Dokument mit der Ziffer 3 und Aktualisierungspfeilen, nicht das Firmenlogo. Logo und Icons funktionieren auch offline. Größere Schrift, skalierbare Bedienicons und Per-Monitor-DPI-Unterstützung verbessern die Darstellung auf hochauflösenden Bildschirmen; soweit vorhanden wird die installierte Windows-Schrift Segoe UI verwendet. Unter **Info** stehen die Programmversion und die Lizenzhinweise der Bedienicons.
-
 ## Bedienung
 
 1. `SchILD3Updater.exe` aus den [GitHub-Releases](https://github.com/cschmidtoptima/Schild3Updater/releases) herunterladen, in einen beschreibbaren Ordner legen und starten. Falls noch kein Release vorhanden ist, kann das Projekt wie unten beschrieben selbst gebaut werden.
