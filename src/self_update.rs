@@ -213,6 +213,35 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Expliziter Netzwerktest gegen den neuesten veröffentlichten Updater-Release"]
+    fn published_release_is_detected_and_downloaded() {
+        let published: service::Release = service::http_client()
+            .unwrap()
+            .get(API)
+            .send()
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .unwrap();
+        let current = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+        assert_eq!(published.tag_name, format!("v{current}"));
+        assert!(select_release(published.clone(), &current)
+            .unwrap()
+            .is_none());
+        let update = select_release(published, &Version::new(0, 0, 0))
+            .unwrap()
+            .expect("Ein älterer Updater muss den veröffentlichten Release erkennen");
+        assert_eq!(update.version, current);
+        let executable = download(&update, &|message| println!("{message}")).unwrap();
+        assert_eq!(
+            version_info::read_version(executable.path()).unwrap(),
+            current
+        );
+        assert!(check().unwrap().is_none());
+    }
+
+    #[test]
     fn unsafe_download_urls_are_rejected_before_network_access() {
         for url in [
             "http://github.com/cschmidtoptima/Schild3Updater/releases/download/v0.3.0/SchILD3Updater.exe",

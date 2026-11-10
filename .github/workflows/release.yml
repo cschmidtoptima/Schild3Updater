@@ -45,10 +45,37 @@ jobs:
           }
           $hash = (Get-FileHash release/SchILD3Updater.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  SchILD3Updater.exe" | Out-File release/SHA256SUMS.txt -Encoding ascii
+      - name: Prepare Third-Party Licenses and Portable ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $env:RUNNER_TEMP 'cargo-about'
+          New-Item -ItemType Directory -Path $tools | Out-Null
+          $archive = Join-Path $tools 'cargo-about.tar.gz'
+          Invoke-WebRequest -Uri 'https://github.com/EmbarkStudios/cargo-about/releases/download/0.9.3/cargo-about-0.9.3-x86_64-pc-windows-msvc.tar.gz' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '9e2942533ef1c592c4a70bdb384cae1550a3f5fc9ae40379b6662e3d2f16fe02') {
+            throw 'The license tool checksum does not match.'
+          }
+          tar -xf $archive -C $tools
+          if ($LASTEXITCODE -ne 0) { throw 'Extracting the license tool failed.' }
+          & (Join-Path $tools 'cargo-about-0.9.3-x86_64-pc-windows-msvc/cargo-about.exe') about generate --locked --target x86_64-pc-windows-msvc --fail about.hbs --output-file release/THIRD-PARTY-NOTICES.html
+          if ($LASTEXITCODE -ne 0) { throw 'Generating third-party notices failed.' }
+          $metadata = cargo metadata --format-version 1 --locked --filter-platform x86_64-pc-windows-msvc | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed.' }
+          $fonts = @($metadata.packages | Where-Object name -eq 'epaint_default_fonts')
+          if ($fonts.Count -ne 1) { throw 'The bundled font package could not be located.' }
+          New-Item -ItemType Directory -Path release/font-licenses | Out-Null
+          Copy-Item (Join-Path (Split-Path $fonts[0].manifest_path -Parent) 'fonts/*.txt') release/font-licenses/
+          if (-not (Test-Path release/font-licenses/UFL.txt)) { throw 'The Ubuntu font license is missing.' }
+          Compress-Archive -Path release/font-licenses/*.txt -DestinationPath release/font-LICENSES.zip
+          Compress-Archive -Path release/SchILD3Updater.exe,release/LICENSE,release/README.md,release/lucide-LICENSE,release/THIRD-PARTY-NOTICES.html,release/font-licenses -DestinationPath "release/SchILD3Updater-$env:GITHUB_REF_NAME-win-x64.zip"
+          Get-ChildItem release -File | Where-Object Name -ne 'SHA256SUMS.txt' | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Out-File release/SHA256SUMS.txt -Encoding ascii
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release create $env:GITHUB_REF_NAME release/SchILD3Updater.exe release/SHA256SUMS.txt release/LICENSE release/README.md release/lucide-LICENSE --repo $env:GITHUB_REPOSITORY --verify-tag --title "SchILD3 Updater $env:GITHUB_REF_NAME" --generate-notes
+          gh release create $env:GITHUB_REF_NAME release/SchILD3Updater.exe "release/SchILD3Updater-$env:GITHUB_REF_NAME-win-x64.zip" release/SHA256SUMS.txt release/LICENSE release/README.md release/lucide-LICENSE release/THIRD-PARTY-NOTICES.html release/font-LICENSES.zip --repo $env:GITHUB_REPOSITORY --verify-tag --title "SchILD3 Updater $env:GITHUB_REF_NAME" --generate-notes
           if ($LASTEXITCODE -ne 0) { throw 'Publishing the release failed.' }

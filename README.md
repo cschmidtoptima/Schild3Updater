@@ -51,7 +51,7 @@ Das Repository und seine Releases müssen **öffentlich erreichbar** sein. Priva
 
 ### Neue Version veröffentlichen
 
-Der Workflow `.github/workflows/release.yml` baut und testet Windows x64 automatisch, sobald ein passender Versionstag gepusht wird. Er prüft Tag und Windows-Dateiversion und veröffentlicht **SchILD3Updater.exe**, **SHA256SUMS.txt**, **LICENSE**, **README.md** und **lucide-LICENSE** als GitHub-Release-Assets. GitHub Actions muss im Repository aktiviert sein.
+Der Workflow `.github/workflows/release.yml` baut und testet Windows x64 automatisch, sobald ein passender Versionstag gepusht wird. Er prüft Tag und Windows-Dateiversion und veröffentlicht **SchILD3Updater.exe**, ein **portables ZIP mit Lizenzbeigaben**, **SHA256SUMS.txt**, **LICENSE**, **README.md**, **lucide-LICENSE**, **THIRD-PARTY-NOTICES.html** und **font-LICENSES.zip** als GitHub-Release-Assets. GitHub Actions muss im Repository aktiviert sein. Für die vollständige Erstverteilung das portable ZIP verwenden; die einzelne EXE wird auch für die Selbstaktualisierung benötigt.
 
 1. `version` in `Cargo.toml` erhöhen, z.B. auf `0.3.0`.
 2. `cargo test` ausführen. Dabei wird auch `Cargo.lock` aktualisiert.
@@ -110,6 +110,12 @@ Ein optionaler Netzwerktest verwendet ein lokal heruntergeladenes älteres offiz
 $env:SCHILD3_TEST_ARCHIVE = 'C:\Downloads\Setup_SchILD3_v3.5.0.zip'
 $env:SCHILD3_TEST_SERVER = 'https://schule.example.org/'
 cargo test official_release_end_to_end -- --ignored --nocapture
+```
+
+Nach der Veröffentlichung kann die Selbstaktualisierung gegen den echten GitHub-Release geprüft werden. Der Quellstand muss dem neuesten veröffentlichten Release entsprechen. Der Test simuliert einen älteren Versionsstand bei der Auswahl, prüft den EXE-Download einschließlich SHA-256 und Windows-Dateiversion und stellt sicher, dass dieselbe Version kein erneutes Update anbietet. Er ersetzt keine installierte EXE:
+
+```powershell
+cargo test published_release_is_detected_and_downloaded -- --ignored --nocapture
 ```
 
 ## Lizenz
